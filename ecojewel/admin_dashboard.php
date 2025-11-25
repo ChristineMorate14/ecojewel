@@ -1,0 +1,233 @@
+<?php
+session_start();
+include 'db_connect.php';
+
+if (!isset($_SESSION['admin_logged_in'])) {
+  header("Location: admin_login.php");
+  exit();
+}
+
+// Handle selected year (default = current year)
+$selected_year = isset($_GET['year']) ? intval($_GET['year']) : date('Y');
+
+// Fetch summary data
+$total_sales_query = "SELECT SUM(total_amount) AS total_sales FROM orders WHERE YEAR(order_date) = $selected_year";
+$total_orders_query = "SELECT COUNT(*) AS total_orders FROM orders WHERE YEAR(order_date) = $selected_year";
+$pending_orders_query = "SELECT COUNT(*) AS pending_orders FROM orders WHERE status = 'Pending' AND YEAR(order_date) = $selected_year";
+$completed_orders_query = "SELECT COUNT(*) AS completed_orders FROM orders WHERE status = 'Completed' AND YEAR(order_date) = $selected_year";
+
+$total_sales = mysqli_fetch_assoc(mysqli_query($conn, $total_sales_query))['total_sales'] ?? 0;
+$total_orders = mysqli_fetch_assoc(mysqli_query($conn, $total_orders_query))['total_orders'] ?? 0;
+$pending_orders = mysqli_fetch_assoc(mysqli_query($conn, $pending_orders_query))['pending_orders'] ?? 0;
+$completed_orders = mysqli_fetch_assoc(mysqli_query($conn, $completed_orders_query))['completed_orders'] ?? 0;
+
+// Monthly sales data
+$query = "SELECT 
+            MONTH(order_date) AS month,
+            SUM(total_amount) AS total_sales
+          FROM orders
+          WHERE YEAR(order_date) = $selected_year
+          GROUP BY MONTH(order_date)";
+$result = mysqli_query($conn, $query);
+
+$months = [];
+$sales = [];
+while ($row = mysqli_fetch_assoc($result)) {
+  $months[] = date("F", mktime(0, 0, 0, $row['month'], 1));
+  $sales[] = $row['total_sales'];
+}
+
+// Top selling products
+$top_products_query = "
+  SELECT p.name, SUM(oi.quantity) AS total_qty, SUM(oi.price * oi.quantity) AS total_revenue
+  FROM order_items oi
+  JOIN products p ON oi.product_id = p.id
+  JOIN orders o ON oi.order_id = o.id
+  WHERE YEAR(o.order_date) = $selected_year
+  GROUP BY p.id
+  ORDER BY total_qty DESC
+  LIMIT 5
+";
+$top_result = mysqli_query($conn, $top_products_query);
+
+$product_names = [];
+$product_sales = [];
+while ($row = mysqli_fetch_assoc($top_result)) {
+  $product_names[] = $row['name'];
+  $product_sales[] = $row['total_qty'];
+}
+?>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Dashboard - Elegant Gems</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  body {
+    font-family: Poppins, sans-serif;
+    background: #fff8f0;
+    margin: 0;
+  }
+  header {
+    background-color: #d4af37;
+    color: white;
+    padding: 15px 30px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .container { padding: 30px; }
+  .summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+  }
+  .summary-card {
+    background: #fff;
+    padding: 20px;
+    border-left: 5px solid #d4af37;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    text-align: center;
+  }
+  .summary-card h3 { margin: 0; color: #b8962f; font-size: 22px; }
+  .summary-card p { margin: 5px 0 0; color: #555; }
+  .filter { text-align: right; margin-bottom: 20px; }
+  select { padding: 8px; border-radius: 5px; border: 1px solid #ccc; }
+  .card {
+    background: white;
+    padding: 25px;
+    border-radius: 10px;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+    margin-bottom: 30px;
+  }
+  a {
+    text-decoration: none;
+    color: white;
+    margin-left: 8px;
+    background: #b8962f;
+    padding: 6px 10px;
+    border-radius: 6px;
+  }
+  a:hover { background: #a4832a; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Welcome, <?= $_SESSION['admin_username'] ?> 👋</h1>
+  <div>
+    📄 Export:
+    <a href="export_sales_report.php?format=excel&year=<?= $selected_year ?>">Excel</a>
+    <a href="export_sales_report.php?format=pdf&year=<?= $selected_year ?>">PDF</a>
+    <a href="download_full_year_report.php?year=<?= $selected_year ?>" target="_blank" class="btn-download">📘 Full Year Report</a>
+    <a href="logout.php">🚪 Logout</a>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- SUMMARY CARDS -->
+  <div class="summary">
+    <div class="summary-card">
+      <h3>₱<?= number_format($total_sales, 2) ?></h3>
+      <p>Total Sales (<?= $selected_year ?>)</p>
+    </div>
+    <div class="summary-card">
+      <h3><?= $total_orders ?></h3>
+      <p>Total Orders</p>
+    </div>
+    <div class="summary-card">
+      <h3><?= $pending_orders ?></h3>
+      <p>Pending Orders</p>
+    </div>
+    <div class="summary-card">
+      <h3><?= $completed_orders ?></h3>
+      <p>Completed Orders</p>
+    </div>
+  </div>
+
+  <!-- FILTER -->
+  <div class="filter">
+    <form method="GET">
+      <label for="year">Select Year:</label>
+      <select name="year" id="year" onchange="this.form.submit()">
+        <?php
+        for ($y = date('Y'); $y >= 2020; $y--) {
+          $selected = ($y == $selected_year) ? 'selected' : '';
+          echo "<option value='$y' $selected>$y</option>";
+        }
+        ?>
+      </select>
+    </form>
+  </div>
+
+  <!-- SALES CHART -->
+  <div class="card">
+    <h2>📊 Monthly Sales Chart (<?= $selected_year ?>)</h2>
+    <canvas id="salesChart"></canvas>
+  </div>
+
+  <!-- TOP PRODUCTS CHART -->
+  <div class="card">
+    <h2>🏆 Top Selling Products (<?= $selected_year ?>)</h2>
+    <canvas id="topProductsChart"></canvas>
+  </div>
+</div>
+
+<script>
+const topCtx = document.getElementById('topProductsChart').getContext('2d');
+new Chart(topCtx, {
+  type: 'bar',
+  data: {
+    labels: <?= json_encode($months) ?>,
+    datasets: [{
+      label: 'Total Sales (₱)',
+      data: <?= json_encode($sales) ?>,
+      backgroundColor: '#d4af37'
+    }]
+  },
+  options: {
+    scales: { y: { beginAtZero: true } }
+  }
+});
+
+const topCtx = document.getElementById('topProductsChart').getContext('2d');
+const productNames = <?= json_encode($product_names) ?>;
+const topChart = new Chart(topCtx, {
+  type: 'doughnut',
+  data: {
+    labels: productNames,
+    datasets: [{
+      label: 'Units Sold',
+      data: <?= json_encode($product_sales) ?>,
+      backgroundColor: ['#d4af37', '#f7d774', '#e5c57c', '#cfa94f', '#b8962f']
+    }]
+  },
+  options: {
+    onClick: (event, elements) => {
+      if (elements.length > 0) {
+        const index = elements[0].index;
+        const productName = productNames[index];
+        window.location.href = 'product_sales_details.php?product=' + encodeURIComponent(productName) + '&year=<?= $selected_year ?>';
+      }
+    },
+    plugins: {
+      legend: { position: 'bottom' },
+      tooltip: {
+        callbacks: {
+          label: ctx => `${ctx.label}: ${ctx.parsed} sold`
+        }
+      }
+    }
+  }
+});
+
+</script>
+
+</body>
+</html>
