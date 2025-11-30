@@ -1,30 +1,3 @@
-<?php
-session_start();
-include 'db_connect.php';
-
-// Initialize cart session if not yet created
-if (!isset($_SESSION['cart'])) {
-  $_SESSION['cart'] = [];
-}
-
-// Remove selected item
-if (isset($_GET['remove'])) {
-  $remove_id = $_GET['remove'];
-  if (($key = array_search($remove_id, $_SESSION['cart'])) !== false) {
-    unset($_SESSION['cart'][$key]);
-  }
-  header("Location: cart.php");
-  exit();
-}
-
-// Handle checkout selection
-if (isset($_POST['checkout_selected'])) {
-  $_SESSION['selected_items'] = $_POST['selected'] ?? [];
-  header("Location: checkout.php");
-  exit();
-}
-?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -188,3 +161,4 @@ if (isset($_POST['checkout_selected'])) {
   </footer>
 </body>
 </html>
+
