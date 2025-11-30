@@ -1,22 +1,3 @@
-<?php
-session_start();
-
-// Initialize cart if not yet set
-if (!isset($_SESSION['cart'])) {
-  $_SESSION['cart'] = [];
-}
-
-// Handle add to cart
-if (isset($_GET['add_to_cart'])) {
-  $product_id = $_GET['add_to_cart'];
-
-  // Add to session cart
-  if (!in_array($product_id, $_SESSION['cart'])) {
-    $_SESSION['cart'][] = $product_id;
-  }
-}
-?>
-
 
 <!DOCTYPE html>
 <html lang="en">
@@ -201,3 +182,4 @@ if (isset($_GET['add_to_cart'])) {
   </footer>
 </body>
 </html>
+
